@@ -1,0 +1,64 @@
+{
+"update_url": "https://clients2.google.com/service/update2/crx",
+
+   "manifest_version": 3,
+   "name": "MerchBridge Etsy Helper",
+   "version": "1.3.31",
+   "description": "An extension to help you fulfill Etsy orders easier with MerchBridge.",
+   "devtools_page": "devtool/devtool.html",
+   "icons": {
+      "16": "assets/images/16.png",
+      "48": "assets/images/48.png",
+      "128": "assets/images/128.png"
+   },
+   "action": {
+      "default_popup": "popup/index.html",
+      "default_title": "Etsy Helper",
+      "default_icon": {
+         "48": "assets/images/48.png"
+      }
+   },
+   "default_locale": "en",
+   "content_scripts": [
+      {
+         "matches": ["https://www.etsy.com/*", "https://www.yuntrack.com/*"],
+         "js": [
+            "assets/libs/jquery.min.js",
+            "assets/libs/jquery.toast.js",
+            "scripts/content_script.js",
+            "scripts/sync_order.js",
+            "scripts/add_tracking.js",
+            "scripts/settings.js",
+            "scripts/etsy-marketing/change-style.js"
+         ],
+         "css": ["assets/styles/jquery.toast.css", "assets/styles/content.css"],
+         "run_at": "document_end"
+      }
+   ],
+   "background": {
+      "service_worker": "scripts/background.js"
+   },
+   "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'",
+      "sandbox": "sandbox allow-scripts; script-src 'self' 'https://www.etsy.com/*'; object-src 'self'"
+   },
+   "permissions": ["scripting"],
+   "host_permissions": [
+      "https://www.etsy.com/*",
+      "https://api-dev.merchbridge.com/*",
+      "https://api.merchbridge.com/*",
+      "http://127.0.0.1:8080/*",
+      "https://www.yuntrack.com/*"
+   ],
+   "web_accessible_resources": [
+      {
+         "resources": [
+            "assets/images/not-found.png",
+            "assets/images/completed.png",
+            "assets/styles/etsy-marketing/style.css",
+            "injected.js"
+         ],
+         "matches": ["https://www.etsy.com/*", "https://www.yuntrack.com/*"]
+      }
+   ]
+}

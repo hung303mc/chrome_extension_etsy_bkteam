@@ -1,0 +1,20 @@
+.wt-grid
+  > .wt-grid__item-xs-12:last-child
+  > div:nth-child(2)
+  .wt-table
+  .wt-table__row
+  .wt-table__row__cell {
+  white-space: wrap !important;
+  word-break: break-all;
+  width: 10% !important;
+  padding: 10px !important;
+}
+
+.wt-grid
+  > .wt-grid__item-xs-12:last-child
+  > div:nth-child(2)
+  .wt-table
+  .wt-table__row
+  .wt-table__row__cell:nth-child(1) {
+  width: 40% !important;
+}
