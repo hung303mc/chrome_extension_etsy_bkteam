@@ -166,8 +166,9 @@ const initAddon = async () => {
   if (!window.location.href.includes("/your/orders/sold")) return;
   // check has api token
   const apiKey = getCookie(mbApi);
-  if (!apiKey || !apiKey.includes("etsyapi")) {
-    notifyError("Please enter MB api key.");
+  if (!apiKey) {
+    notifyError("" +
+        "Please enter MB api key.");
     return;
   }
   if ($(".om-addon").length) return;

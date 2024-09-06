@@ -1,7 +1,5 @@
 const isProduction = true;
-const MBUrl = isProduction
-  ? "https://api.merchbridge.com/query"
-  : "https://api-dev.merchbridge.com/query";
+const MBUrl = "http://bkteam.top/dungvuong-admin/api/Order_Sync_Etsy_to_System_Api.php";
 const EtsyDomain = "https://www.etsy.com";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -97,6 +95,64 @@ const getOrders = (data, mbApiKey) => {
     mapBuyer[buyer.buyer_id] = buyer;
   }
 
+// Function to convert display_name (e.g., "Ship by Sep 9, 2024", "Ship tomorrow", or "Ship today") to ISO 8601 date format
+  const convertToPDT = (displayName) => {
+    if (displayName.includes("today")) {
+      // If it's "Ship today", get the current date
+      const today = new Date();
+
+      // Convert to ISO format
+      return today.toISOString();
+    }
+
+    if (displayName.includes("tomorrow")) {
+      // If it's "Ship tomorrow", get the current date and add 1 day
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Convert to ISO format
+      return tomorrow.toISOString();
+    }
+
+    // Convert display_name like "Ship by Sep 9, 2024" to ISO format
+    const dateMatch = displayName.match(/Ship by (\w+ \d+, \d+)/);
+    if (dateMatch && dateMatch[1]) {
+      const dateObj = new Date(dateMatch[1]);
+
+      // Convert to ISO format
+      return dateObj.toISOString();
+    }
+
+    return 'No ship by date';
+  };
+
+  // Map order groups to get "Ship by date" in PDT
+  const shipByDates = {};
+  if (data?.order_groups?.length > 0) {
+    for (let group of data.order_groups) {
+      for (let orderId of group.order_ids) {
+        shipByDates[orderId] = convertToPDT(group.display_name);
+      }
+    }
+  }
+
+  // Function to convert estimated_delivery_date to ISO 8601 format, using the last day of the range
+  const convertEstimatedDelivery = (deliveryDateStr) => {
+    const dateRange = deliveryDateStr.match(/(\w+)\s\d+-\d+/); // Match month part (e.g., "Sep")
+    const dayEndMatch = deliveryDateStr.match(/-(\d+)/); // Match last day (e.g., "16")
+
+    if (dateRange && dayEndMatch) {
+      const month = dateRange[1]; // Extract the month (e.g., "Sep")
+      const dayEnd = dayEndMatch[1]; // Extract the last day (e.g., "16")
+
+      const fullDateStr = `${month} ${dayEnd}, ${new Date().getFullYear()}`; // Combine month and last day, assume current year
+      const dateObj = new Date(fullDateStr);
+      return dateObj.toISOString();
+    }
+    return null;
+  };
+
+
   // Map transactions
   let transactionsObj = {};
   if (data?.transactions?.length > 0) {
@@ -126,9 +182,21 @@ const getOrders = (data, mbApiKey) => {
       if (type == "Etsy_Order_Notes" && note_from_buyer)
         note = notes.note_from_buyer;
     }
+
+    // Get ship by date in ISO 8601 format from mapped order groups
+    const shipByDate = shipByDates[order.order_id] || 'No ship by date';
+
+    // Get estimated delivery date in ISO format (taking last day of the range)
+    const estimatedDeliveryDate = order.fulfillment?.status?.physical_status?.estimated_delivery_date
+        ? convertEstimatedDelivery(order.fulfillment.status.physical_status.estimated_delivery_date)
+        : 'No delivery date';
+
     const newOrder = {
       orderId: String(order.order_id),
       orderDate: convertTime(order.order_date || ""),
+      shipByDate: shipByDate, // Add ship by date here (now converted to PDT)
+      deliveryByDate: estimatedDeliveryDate, // Add delivery date here
+      note: note,  // Add note from buyer here
       buyer: {
         email: buyer?.email,
         name: buyer?.name,
@@ -206,16 +274,21 @@ const getOrders = (data, mbApiKey) => {
 
 const sendRequestToMB = async (endPoint, apiKey, data) => {
   const res = {
-    data: null,
     error: null,
   };
-  const url = endPoint ? MBUrl.replace("/query", endPoint) : MBUrl;
+  if (!apiKey) apiKey = await getMBApiKey();
+
+  let url = MBUrl;
+  if (endPoint) {
+    url += `?case=${endPoint}`;
+  }
+
   try {
     const resp = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        authorization: `Bearer ${apiKey}`,
+        "merchantId": apiKey, // Sử dụng merchantId như một apiKey
       },
       body: data,
     });
@@ -256,18 +329,14 @@ chrome.runtime.onMessage.addListener(async (req, sender, res) => {
       newOrders.push({ ...rest, items: newItems });
     }
     let query = JSON.stringify({
-      operationName: "createEtsyOrder",
-      variables: {
-        input: newOrders,
-      },
-      query:
-        "mutation createEtsyOrder($input: [NewEtsyOrder!]!) {createEtsyOrder(input: $input){error}}",
+      input: newOrders,
+      merchantId: apiKey  // Thêm merchantId vào query
     });
-    const result = await sendRequestToMB(null, apiKey, query);
+    const result = await sendRequestToMB("createEtsyOrder", apiKey, query);
     const resp = {
       orders,
-      data: result.data ? result.data.createEtsyOrder : null,
-      error: result.errors ? result.errors[0].message : null,
+      data: result,  // Gắn thẳng kết quả server trả về vào 'data'
+      error: result.errors || null,  // Nếu có errors từ server thì gắn vào, nếu không thì null
     };
     sendMessage(sender.tab.id, "syncOrderToMB", resp);
 
@@ -362,19 +431,15 @@ chrome.runtime.onConnect.addListener(function (port) {
         }
         // check synced orders
         const query = JSON.stringify({
-          query: `
-                  query{
-                     checkEtsyOrderSyncedByIds(
-                        ids: ${JSON.stringify(orders.map((o) => o["orderId"]))}
-                     )
-                  }
-            `,
+          originIds: JSON.stringify(orders.map((o) => o["orderId"]))
         });
-        const result = await sendRequestToMB(null, mbApiKey, query);
-        resp.mbInfos = result.data
-          ? result.data.checkEtsyOrderSyncedByIds
-          : null;
-        resp.error = result.errors ? result.errors[0].message : null;
+        const result = await sendRequestToMB("checkEtsySyncedOrders", mbApiKey, query);
+        resp.mbInfos = result.data;
+        resp.error = result.error
+            ? result.error
+            : result.errors
+                ? result.errors[0].message
+                : null;
 
         sendToContentScript("orders", resp);
         break;
@@ -406,17 +471,15 @@ chrome.runtime.onMessage.addListener(async (req) => {
       }
       // check synced orders
       const query = JSON.stringify({
-        query: `
-          query{
-            checkEtsyOrderSyncedByIds(
-              ids: ${JSON.stringify(orders.map((o) => o["orderId"]))}
-            )
-          }
-        `,
+        originIds: JSON.stringify(orders.map((o) => o["orderId"]))
       });
-      const result = await sendRequestToMB(null, mbApiKey, query);
-      resp.mbInfos = result.data ? result.data.checkEtsyOrderSyncedByIds : null;
-      resp.error = result.errors ? result.errors[0].message : null;
+      const result = await sendRequestToMB("checkEtsySyncedOrders", mbApiKey, query);
+      resp.mbInfos = result.data;
+      resp.error = result.error
+          ? result.error
+          : result.errors
+              ? result.errors[0].message
+              : null;
 
       sendToContentScript("orders", resp);
       break;

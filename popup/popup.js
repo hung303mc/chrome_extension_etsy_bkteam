@@ -1,9 +1,9 @@
 $(document).on("click", "#save", async function () {
    const value = $("#api_key").val();
-   if (!value.includes("etsyapi")) {
-      alert("Invalid api key");
-      return;
-   }
+   // if (!value.includes("etsyapi")) {
+   //    alert("Invalid api key");
+   //    return;
+   // }
    $(this).addClass("loader");
    chrome.runtime.sendMessage({
       message: "popupSaveApiKey",

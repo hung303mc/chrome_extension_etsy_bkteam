@@ -356,18 +356,20 @@ chrome.runtime.onMessage.addListener(async function (req, sender, res) {
       orders,
     } = data;
     let hasError = false;
-    if (error) {
+    if (error && Object.keys(error).length > 0) {
       notifyError(error);
       return;
     }
     for (const order of orders) {
-      if (message[order.orderId]) hasError = true;
+      if (message && message[order.orderId]) hasError = true;
       else $(`tr[data-order-id="${order.orderId}"]`).remove();
     }
     if (!hasError) notifySuccess("Sync orders success.");
     else {
-      for (const order of Object.entries(message)) {
-        notifySuccess(order[0] + ": " + order[1]);
+      if (message && Object.keys(message).length > 0) {
+        for (const order of Object.entries(message)) {
+          notifySuccess(order[0] + ": " + order[1]);
+        }
       }
     }
     // If the order is out of stock, then add not found
