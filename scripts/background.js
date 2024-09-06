@@ -379,6 +379,18 @@ chrome.runtime.onMessage.addListener(async (req, sender, res) => {
       validTracks,
     });
   }
+  if (message === "addedTrackingCode") {
+    const { orderId: infoOrderId, tracking: infoTracking } = data;
+
+    // Gửi thông tin order và tracking lên server
+    const infoQuery = JSON.stringify({
+      orderId: infoOrderId,
+      trackingCode: infoTracking,
+    });
+
+    const resInfoTrack = await sendRequestToMB("addedTrackingCode", null, infoQuery);
+    // Không điều hướng sau khi gửi thông tin, chỉ thực hiện phần gửi thông tin này
+  }
 
   // Auto sync order
   if (message === "autoReady") {

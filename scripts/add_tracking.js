@@ -114,6 +114,25 @@ const detectCarrierValue = (carrierCode = "") => {
          return 114;
       case "asendia":
          return -1;
+      case "yanwen":
+         return -1; // Yanwen, mapped to "Other"
+      case "yunexpress":
+         return -1; // YunExpress, mapped to "Other"
+      case "4px":
+         return -1; // 4PX, mapped to "Other"
+      case "royal-mail":
+         return 115; // Royal Mail (assumed carrier code)
+      case "deutsche-post":
+         return 116; // Deutsche Post (assumed carrier code)
+      case "jetlogistic":
+         return -1; // Jet Logistic, mapped to "Other"
+      case "japan-post":
+         return -1; // Japan Post, mapped to "Other"
+      case "sfb2c":
+         return -1; // SF B2C, mapped to "Other"
+      case "china-ems":
+         return -1; // China EMS, mapped to "Other"
+
       default:
          break;
    }
@@ -128,6 +147,28 @@ const mapCarrierName = (carrier) => {
          return "USPS";
       case "ups":
          return "UPS";
+      case "fedex":
+         return "FedEx";
+      case "dhl":
+         return "DHL";
+      case "yanwen":
+         return "Yanwen";
+      case "yunexpress":
+         return "YunExpress";
+      case "4px":
+         return "4PX";
+      case "royal-mail":
+         return "Royal Mail";
+      case "deutsche-post":
+         return "Deutsche Post";
+      case "jetlogistic":
+         return "Jet Logistic";
+      case "japan-post":
+         return "Japan Post";
+      case "sfb2c":
+         return "SF B2C";
+      case "china-ems":
+         return "China EMS";
       default:
          break;
    }
@@ -143,10 +184,10 @@ const executeAddTracking = async (orderId, tracking, carrier = "") => {
       notifyError("Tracking Order not found.");
       return;
    }
-   if (tracking.startsWith("YT")) {
-      notifyError("Invalid Tracking Order.");
-      return;
-   }
+   // if (tracking.startsWith("YT")) {
+   //    notifyError("Invalid Tracking Order.");
+   //    return;
+   // }
 
    // map carrierCode via `shipping_carrier_code` else detect from `tracking_number`
    let carrierCode = "";
@@ -169,7 +210,7 @@ const executeAddTracking = async (orderId, tracking, carrier = "") => {
    }
    // click btn update progress
    // const btnUpdateProgressXpath = `.flag-img [role="tablist"][data-order-id="${orderId}"] .wt-mb-xs-1:nth-child(2) button`;
-   const btnUpdateProgressXpath = `.flag-img[data-order-id="${orderId}"] .wt-mb-xs-1:nth-child(2) button`;
+   const btnUpdateProgressXpath = `.flag-img[data-order-id="${orderId}"] [data-test-id="no-user-defined-steps-update-progress-button"] button`;
    let timeOutBtnUpdateProgress = 0;
    while (true) {
       if (timeOutBtnUpdateProgress == 60) {
@@ -242,8 +283,31 @@ const executeAddTracking = async (orderId, tracking, carrier = "") => {
    // === 02/11/23
    const $select = document.querySelector("#shipping-carrier-select");
    const $options = Array.from($select.options);
+   // for (let opt of $options) {
+   //    opt.selected = opt.value == carrierCode ? true : false;
+   // }
+
+   // Tìm option phù hợp dựa trên tên carrier thay vì chỉ dùng giá trị
+   let foundCarrier = false;
    for (let opt of $options) {
-      opt.selected = opt.value == carrierCode ? true : false;
+      const optionText = opt.textContent.trim().toLowerCase();
+      if (optionText.includes(carrierName.toLowerCase())) {
+         opt.selected = true;
+         foundCarrier = true;
+         break;
+      }
+   }
+
+   // Nếu không tìm thấy carrier, chọn "Other"
+   if (!foundCarrier) {
+      const otherOption = $select.querySelector('option[value="-1"]');
+      if (otherOption) {
+         otherOption.selected = true;
+         carrierCode = -1; // Set carrierCode to "Other"
+      } else {
+         notifyError("Carrier not found.");
+         return;
+      }
    }
 
    $select.value = carrierCode;
@@ -315,6 +379,16 @@ const executeAddTracking = async (orderId, tracking, carrier = "") => {
       if (!$("#add_tracking .om-not-found-wrap").length)
          $("#add_tracking .table_wrap").append(orderNotFound);
    }
+
+   // Gửi message về background.js sau khi thêm thành công
+   chrome.runtime.sendMessage({
+      message: "addedTrackingCode",
+      data: {
+         orderId: orderId,
+         tracking: tracking
+      },
+   });
+
    notifySuccess("Add tracking success.");
    await sleep(1000);
 };
@@ -365,11 +439,11 @@ $(document).on("click", ".add-tracking-item", async function () {
       notifyError("Tracking Order not found.");
       return;
    }
-   await fetchTrackChinaToUS();
-   if ($(`#add_tracking tr[data-order-id="${orderId}"]`).length == 0) {
-      notifyError("Order without US tracking code.");
-      return;
-   }
+   // await fetchTrackChinaToUS();
+   // if ($(`#add_tracking tr[data-order-id="${orderId}"]`).length == 0) {
+   //    notifyError("Order without US tracking code.");
+   //    return;
+   // }
    $("#add-trackings").addClass("loader");
    $(this).addClass("loader");
    await executeAddTracking(orderId, tracking, carrier);
@@ -378,7 +452,7 @@ $(document).on("click", ".add-tracking-item", async function () {
 });
 
 $(document).on("click", "#add-trackings", async function () {
-   await fetchTrackChinaToUS();
+   // await fetchTrackChinaToUS();
    const orders = [];
    // check sync order specify
    let isAddTrackingSpecify = false;
