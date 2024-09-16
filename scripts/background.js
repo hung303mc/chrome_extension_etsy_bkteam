@@ -136,22 +136,41 @@ const getOrders = (data, mbApiKey) => {
     }
   }
 
-  // Function to convert estimated_delivery_date to ISO 8601 format, using the last day of the range
+  // Convert Unix timestamp to ISO 8601 format for expected_ship_date
+  const convertTimestampToISO = (timestamp) => {
+    const dateObj = new Date(timestamp * 1000); // Convert from seconds to milliseconds
+    return dateObj.toISOString();
+  };
+
   const convertEstimatedDelivery = (deliveryDateStr) => {
-    const dateRange = deliveryDateStr.match(/(\w+)\s\d+-\d+/); // Match month part (e.g., "Sep")
-    const dayEndMatch = deliveryDateStr.match(/-(\d+)/); // Match last day (e.g., "16")
+    // Regular expression to match both cases with month before and after day(s)
+    const dateMatch = deliveryDateStr.match(/(\d+)?-?(\d+)?\s?(\w+)?(\d+)?/);
 
-    if (dateRange && dayEndMatch) {
-      const month = dateRange[1]; // Extract the month (e.g., "Sep")
-      const dayEnd = dayEndMatch[1]; // Extract the last day (e.g., "16")
+    if (dateMatch) {
+      let dayStart, dayEnd, month;
 
-      const fullDateStr = `${month} ${dayEnd}, ${new Date().getFullYear()}`; // Combine month and last day, assume current year
+      // Handle case when month is before day(s)
+      if (isNaN(dateMatch[1])) {
+        month = dateMatch[1];  // Extract month (e.g., "Sep")
+        dayStart = dateMatch[2]; // Extract start day (e.g., "21")
+        dayEnd = dateMatch[3] || dayStart; // Extract end day (e.g., "23" or default to dayStart)
+      }
+      // Handle case when day(s) come before month
+      else {
+        dayStart = dateMatch[1]; // Extract start day (e.g., "21")
+        dayEnd = dateMatch[2] || dayStart; // Extract end day (e.g., "23" or default to dayStart)
+        month = dateMatch[3]; // Extract month (e.g., "Sep")
+      }
+
+      // Combine the end day, month, and current year
+      const fullDateStr = `${month} ${dayEnd}, ${new Date().getFullYear()}`;
       const dateObj = new Date(fullDateStr);
+
+      // Return in ISO 8601 format
       return dateObj.toISOString();
     }
     return null;
   };
-
 
   // Map transactions
   let transactionsObj = {};
@@ -183,13 +202,17 @@ const getOrders = (data, mbApiKey) => {
         note = notes.note_from_buyer;
     }
 
-    // Get ship by date in ISO 8601 format from mapped order groups
-    const shipByDate = shipByDates[order.order_id] || 'No ship by date';
+
 
     // Get estimated delivery date in ISO format (taking last day of the range)
     const estimatedDeliveryDate = order.fulfillment?.status?.physical_status?.estimated_delivery_date
         ? convertEstimatedDelivery(order.fulfillment.status.physical_status.estimated_delivery_date)
         : 'No delivery date';
+
+    // Get ship by date in ISO 8601 format from expected_ship_date
+    const shipByDate = order.fulfillment?.status?.physical_status?.shipping_status?.expected_ship_date
+        ? convertTimestampToISO(order.fulfillment.status.physical_status.shipping_status.expected_ship_date)
+        : 'No ship by date';
 
     const newOrder = {
       orderId: String(order.order_id),
