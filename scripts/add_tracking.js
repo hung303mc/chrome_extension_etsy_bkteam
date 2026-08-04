@@ -208,39 +208,91 @@ const executeAddTracking = async (orderId, tracking, carrier = "") => {
       notifyError("Could not detect carrier from tracking.");
       return;
    }
+   
    // click btn update progress
-   // const btnUpdateProgressXpath = `.flag-img [role="tablist"][data-order-id="${orderId}"] .wt-mb-xs-1:nth-child(2) button`;
-   const btnUpdateProgressXpath = `.flag-img[data-order-id="${orderId}"] [data-test-id="no-user-defined-steps-update-progress-button"] button`;
+   const getOrderRow = () => {
+      // Legacy Etsy DOM.
+      const rowByLegacyBtn = $(
+         `#browse-view .panel-body-row button[orderid="${orderId}"]`,
+      ).closest(".panel-body-row");
+      if (rowByLegacyBtn.length) return rowByLegacyBtn.first();
+
+      // Newer Etsy DOM may not expose button[orderid].
+      const rows = $("#browse-view .panel-body-row");
+      const normalizedOrderId = String(orderId).replace(/\D/g, "");
+      for (let i = 0; i < rows.length; i++) {
+         const row = rows.eq(i);
+         const anchors = row.find("a[href]");
+         for (let j = 0; j < anchors.length; j++) {
+            const a = anchors.eq(j);
+            const href = String(a.attr("href") || "");
+            const textId = String(a.text() || "").replace(/\D/g, "");
+            if (
+               href.includes(`id=${orderId}`) ||
+               href.includes(`order_id=~${orderId}`) ||
+               textId === normalizedOrderId
+            ) {
+               return row;
+            }
+         }
+      }
+      return $();
+   };
+   const getUpdateProgressBtn = () => {
+      const row = getOrderRow();
+      if (!row.length) return $();
+
+      const selectors = [
+         // Legacy Etsy DOM.
+         '[data-test-id="no-user-defined-steps-update-progress-button"] button',
+         // New Etsy DOM where the clickable node is the host.
+         '[data-test-id="no-user-defined-steps-update-progress-button"][role="button"]',
+         '[data-test-id="no-user-defined-steps-update-progress-button"]',
+      ];
+      for (const selector of selectors) {
+         const elem = row.find(selector).first();
+         if (elem.length) return elem;
+      }
+      return $();
+   };
+   const getProgressOptionBtn = () =>
+      getOrderRow().find(".list-unstyled li:last-child .btn-primary").first();
+
    let timeOutBtnUpdateProgress = 0;
    while (true) {
       if (timeOutBtnUpdateProgress == 60) {
          notifyError("Order not found.");
          return;
       }
-      if ($(btnUpdateProgressXpath).length) break;
+      if (getUpdateProgressBtn().length) break;
       await sleep(500);
       timeOutBtnUpdateProgress++;
    }
-   $(btnUpdateProgressXpath).trigger("click");
+   const updateProgressBtn = getUpdateProgressBtn();
+   if (updateProgressBtn.length) {
+      const btn = updateProgressBtn.get(0);
+      if (btn && typeof btn.click === "function") btn.click();
+      else updateProgressBtn.trigger("click");
+   }
    // check has option progress
-   const progressOptionXpath = `.flag-img[data-order-id="${orderId}"] .list-unstyled li:last-child .btn-primary`;
-   if ($(progressOptionXpath).length) {
+   if (getProgressOptionBtn().length) {
       let timeOutOrderInfo = 0;
       while (true) {
          if (timeOutOrderInfo == 60) {
             notifyError("Could not open progress options.");
             return;
          }
-         if ($(progressOptionXpath).length) break;
+         if (getProgressOptionBtn().length) break;
          await sleep(500);
          timeOutOrderInfo++;
       }
       // click btn complete order
-      const btnCompleteElem = document.querySelector(progressOptionXpath);
+      const btnCompleteElem = getProgressOptionBtn().get(0);
       const btnCompleteEvent = document.createEvent("HTMLEvents");
       btnCompleteEvent.initEvent("click", true, true);
       btnCompleteElem.dispatchEvent(btnCompleteEvent);
    }
+
    // wait modal add tracking
    let timeOutModalTracking = 0;
    while (true) {
@@ -318,42 +370,53 @@ const executeAddTracking = async (orderId, tracking, carrier = "") => {
 
    $select.dispatchEvent(carrierEvent);
 
+   const getOrderTextInput = (fieldName) => {
+      const inputName = `${fieldName}-${orderId}`;
+      const lightDomInput = document.querySelector(`input[name="${inputName}"]`);
+      if (lightDomInput) return lightDomInput;
+
+      const inputHost = document.querySelector(
+         `clg-text-input[name="${inputName}"]`,
+      );
+      return inputHost?.shadowRoot?.querySelector("input") || null;
+   };
+
    if (carrierCode === -1 && carrierName) {
       await sleep(1000);
-      const carrierXpath = `#mark-as-complete-overlay input[name="carrierName-${orderId}"]`;
+      let carrierInputEle = null;
       let timeOutTrackingInput = 0;
       while (true) {
          if (timeOutTrackingInput == 30) {
             notifyError("Could not find carrier input.");
             return;
          }
-         if ($(carrierXpath).length) break;
+         carrierInputEle = getOrderTextInput("carrierName");
+         if (carrierInputEle) break;
          await sleep(500);
          timeOutTrackingInput++;
       }
-      const carrierInputEle = $(carrierXpath);
       carrierInputEle.focus();
-      carrierInputEle.val("");
+      carrierInputEle.value = "";
       document.execCommand("insertText", false, carrierName);
       carrierInputEle.blur();
    }
    await sleep(1000);
 
    // enter tracking
-   const trackingXpath = `#mark-as-complete-overlay input[name="trackingCode-${orderId}"]`;
+   let trackingInputElem = null;
    let timeOutTrackingInput = 0;
    while (true) {
       if (timeOutTrackingInput == 30) {
          notifyError("Could not find tracking input.");
          return;
       }
-      if ($(trackingXpath).length) break;
+      trackingInputElem = getOrderTextInput("trackingCode");
+      if (trackingInputElem) break;
       await sleep(500);
       timeOutTrackingInput++;
    }
-   const trackingInputElem = $(trackingXpath);
    trackingInputElem.focus();
-   trackingInputElem.val("");
+   trackingInputElem.value = "";
    document.execCommand("insertText", false, tracking);
    trackingInputElem.blur();
 

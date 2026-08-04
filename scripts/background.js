@@ -143,6 +143,19 @@ const getOrders = (data, mbApiKey) => {
   };
 
   const convertEstimatedDelivery = (deliveryDateStr) => {
+
+    // Case: "Jan 26-Feb 7" (range khác tháng) -> lấy ngày cuối
+    const crossMonthMatch = deliveryDateStr.match(/(\w+)\s(\d+)\s*-\s*(\w+)\s(\d+)/);
+    if (crossMonthMatch) {
+      const endMonth = crossMonthMatch[3];
+      const endDay = crossMonthMatch[4];
+      const currentYear = new Date().getFullYear();
+      const fullDateStr = `${endMonth} ${endDay}, ${currentYear}`;
+      const dateObj = new Date(fullDateStr);
+      if (!isNaN(dateObj.getTime())) {
+        return dateObj.toISOString();
+      }
+    }
     // Regex này được thiết kế riêng cho các định dạng như "Jun 23-25" hoặc "Jun 23"
     // Groups: 1=Tháng, 2=Ngày bắt đầu, 3=Ngày kết thúc (nếu có)
     const dateMatch = deliveryDateStr.match(/(\w+)\s(\d+)(?:-(\d+))?/);
